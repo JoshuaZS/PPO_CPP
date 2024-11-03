@@ -190,12 +190,12 @@ public:
 
 int main() {
     // Hyperparameters
-    const double eps_clip = 0.2;
-    const int K_epochs = 80;
-    const int EPI_MAX = 20;
-    const int state_dim = 16, hid_dim = 8, act_dim = 4;
-    const double actor_lr = 1e-3, critic_lr = 1e-3;
-    const double lmbda = 0.9, eps = 0.1, gamma = 0.99;
+    const int K_epochs = 80;  // 单个episode数据训练次数
+    const int EPI_MAX = 20;  // 单个episode最大步数
+    const int state_dim = 16, hid_dim = 8, act_dim = 4;  // 状态维度，隐藏层维度，动作维度
+    const double actor_lr = 1e-3, critic_lr = 1e-3; // 学习率
+    const double lmbda = 0.9, gamma = 0.99;  // 优势函数相关参数
+    const double eps = 0.2; // clip超参数
     const int epochs = 500;
 
     Env env(state_dim, act_dim);
@@ -220,7 +220,7 @@ int main() {
         env.reset();
         is_terminal = 0;
 
-        while (is_terminal == 0 && epi_step < EPI_MAX) {
+        while (is_terminal == 0 && (epi_step % EPI_MAX != 0 || epi_step == 0)) {
             auto action = actor.take_action(Matrix(state)).to_vector();
             auto s_ = env.step(action);
             next_state = std::get<0>(s_); reward = std::get<1>(s_); is_terminal = std::get<2>(s_);
