@@ -3,4 +3,4 @@
 + 其中actor使用基于高斯分布采样的方式获取action，也即action为连续空间。
 + 采用了Suitable credit技巧，以及基于clip的相关系数计算。
 + 主函数位于main.cpp中。
-+ 超参数说明：
+
