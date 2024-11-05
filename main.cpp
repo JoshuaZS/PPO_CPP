@@ -3,57 +3,64 @@
 #include "tool.h"
 
 
-class Env {
+class Env {  // 简化版cartPole环境
 private:
-    // 状态和动作的维度
-    int state_dim; // 状态空间的维度
-    int action_dim; // 动作空间的维度
-    std::vector<double> state; // 当前状态
+    const double gravity = 9.8; // 重力加速度
+    const double mass_cart = 1.0; // 推车质量
+    const double mass_pole = 0.1; // 杆质量
+    const double total_mass = mass_cart + mass_pole; // 总质量
+    const double length = 0.5; // 杆长度
+    const double polemass_length = mass_pole * length; // 杆质量乘以长度
+    const double force_mag = 10.0; // 推力大小
+    const double tau = 0.02; // 采样时间间隔
+    const int state_dim = 3;
+    const int action_dim = 1;
+
+    double velocity; // 推车速度
+    double angle; // 杆角度
+    double angle_velocity; // 杆角速度
+
+    std::random_device rd;
+    std::mt19937 gen;
+    std::uniform_real_distribution<> dis;
 
 public:
-    Env(int m, int n) : state_dim(m), action_dim(n), state(m, 0.0) {}
-
-    std::vector<double> reset() { // 重置环境状态
-        state = std::vector<double>(state_dim, 0.0);
-        return state;
+    Env() : gen(rd()), dis(-1.0, 1.0) {
+        reset();
     }
 
-    // 执行一个动作并返回下一个状态、奖励和是否结束
-    std::tuple<std::vector<double>, double, int> step(const std::vector<double>& action) {
-        std::vector<double> next_state(state_dim, 0.0);
-
-        for (int i = 0; i < state_dim; ++i) { // 模拟环境的复杂性
-            for (int j = 0; j < action_dim; ++j) {
-                next_state[i] += action[j] * (i + j) / (state_dim + action_dim); // 示例更新规则
-            }
-            next_state[i] += state[i] * 0.9; // 一些保持状态的因子
-        }
-        
-        double reward = calculate_reward(state, action); // 计算奖励
-        int done = is_terminal_state(next_state); // 检查是否结束
-        state = next_state; // 更新状态
-        return { next_state, reward, done };
+    std::vector<double> reset() {  // 重置环境状态
+        velocity = 0.0;
+        angle = 0.0;
+        angle_velocity = 0.0;
+        // 随机初始化杆的角度，范围在[-0.418, 0.418]（±25度）
+        double init_angle = dis(gen) * 0.418 - 0.209;
+        angle = init_angle;
+        angle_velocity = 0.0;
+        return {velocity, angle, angle_velocity};
     }
 
-    // 计算奖励
-    double calculate_reward(const std::vector<double>& state, const std::vector<double>& action) {
-        double reward = 0.0;
-        for (int i = 0; i < state_dim; ++i)
-            reward += state[i] * state[i];
-        for (int i = 0; i < action_dim; ++i)
-            reward -= action[i] * action[i];
-        
-        return -reward; 
-    }
+    std::tuple<std::vector<double>, double, int> step(std::vector<double> actions) {
+        // 将action缩放到[-force_mag, force_mag]范围内
+        double action = std::max(std::min(actions[0], 1.0), -1.0) * force_mag;
+        // 计算杆的加速度
+        double costheta = cos(angle);
+        double sintheta = sin(angle);
+        double temp = (action + polemass_length * angle_velocity * angle_velocity * sintheta) / total_mass;
+        double thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0 / 3.0 - mass_pole * costheta * costheta / total_mass));
+        double acc = (total_mass * temp - polemass_length * thetaacc * costheta) / total_mass;
+        // 更新状态
+        angle_velocity += thetaacc * tau;
+        velocity += acc * tau;
+        angle += angle_velocity * tau;
+        // 检查episode是否结束
+        int is_terminal = (std::abs(angle) > 0.418) || (std::abs(velocity) > 0.27) ? 1 : 0; // ±25度或速度超过0.27
+        // 计算奖励
+        double reward = is_terminal ? -1.0 : 1.0;
+        // 返回下一个状态
+        std::vector<double> next_state = { velocity, angle, angle_velocity };
 
-    int is_terminal_state(const std::vector<double>& state) {
-        double s = 0;
-        for (int i = 0; i < state_dim; i++) {
-            s += std::abs(state[i]);
-            if (s > state_dim * 100)
-                return 1;
-        }
-        return 0;
+        return { next_state, reward, is_terminal };
     }
 };
 
@@ -192,7 +199,7 @@ int main() {
     // Hyperparameters
     const int K_epochs = 80;  // 单个episode数据训练次数
     const int EPI_MAX = 20;  // 单个episode最大步数
-    const int state_dim = 16, hid_dim = 8, act_dim = 4;  // 状态维度，隐藏层维度，动作维度
+    const int state_dim = 3, hid_dim = 8, act_dim = 1;  // 状态维度，隐藏层维度，动作维度
     const double actor_lr = 1e-3, critic_lr = 1e-3; // 学习率
     const double lmbda = 0.9, gamma = 0.99;  // 优势函数相关参数
     const double eps = 0.2; // clip超参数
